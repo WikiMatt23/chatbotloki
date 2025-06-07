@@ -3,3 +3,4 @@ streamlit-authenticator
 PyYAML
 bcrypt
 openai
+tiktoken
