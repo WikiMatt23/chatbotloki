@@ -4,3 +4,4 @@ PyYAML
 bcrypt
 openai
 tiktoken
+uuid
