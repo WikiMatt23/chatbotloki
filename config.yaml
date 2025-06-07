@@ -1,0 +1,11 @@
+credentials:
+  usernames:
+    demo:
+      name: Demo User
+      password: $2b$12$qBz5ztX5F8JZxWhAcRFTauENmp5FdD2K6UBQ3QYTejBGzRH2Lqt5W  # "password123"
+cookie:
+  name: chatbot-cookie
+  key: supersecretkey@123@  # 🔐 Replace with something long and secret
+  expiry_days: 30
+preauthorized:
+  emails: []
