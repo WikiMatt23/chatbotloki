@@ -15,7 +15,7 @@ if not openai_api_key:
     st.info("Please add your OpenAI API key to continue.", icon="🗝️")
     st.stop()
 
-# --- CREATE CLIENT ---
+# --- CREATE CLIENT AND FETCH MODELS ---
 try:
     client = OpenAI(api_key=openai_api_key)
     models_response = client.models.list()
@@ -23,6 +23,13 @@ try:
 except OpenAIError as e:
     st.error(f"❌ Failed to fetch models: {str(e)}")
     st.stop()
+
+# --- SET DEFAULT MODEL ---
+default_model = "gpt-4.1-mini"
+if default_model in available_models:
+    selected_model = default_model
+else:
+    selected_model = available_models[0]
 
 # --- MODEL COST DISPLAY ---
 def cost_label(model_name):
@@ -37,18 +44,23 @@ def cost_label(model_name):
 
 # --- MODEL SELECTION ---
 model_labels = [cost_label(m) for m in available_models]
-selected_label = st.selectbox("🧠 Choose a model", model_labels)
-selected_model = selected_label.split(" ")[0]  # Extract just the model ID
+default_index = next((i for i, m in enumerate(available_models) if m == selected_model), 0)
+selected_label = st.selectbox("🧠 Choose a model", model_labels, index=default_index)
+selected_model = selected_label.split(" ")[0]  # Extract model ID
 
 # --- CUSTOM MODEL INPUT ---
-custom_model_input = st.text_input("Or type a custom model name (overrides dropdown)", placeholder="e.g. gpt-4-vision-preview")
+custom_model_input = st.text_input(
+    "Or type a custom model name (overrides dropdown)",
+    placeholder="e.g. gpt-4-vision-preview"
+)
 
 # Use custom model if provided
 model_name = custom_model_input.strip() if custom_model_input else selected_model
 
 # --- FILE UPLOAD ---
 uploaded_files = st.file_uploader(
-    "📁 Upload files (images, PDFs, text)", accept_multiple_files=True,
+    "📁 Upload files (images, PDFs, text)",
+    accept_multiple_files=True,
     type=["png", "jpg", "jpeg", "txt", "pdf"]
 )
 
@@ -76,15 +88,15 @@ if prompt := st.chat_input("Type your message..."):
             file_descriptions.append(f"📷 Image uploaded: {file.name}")
         elif file_type == "application/pdf":
             file_descriptions.append(f"📄 PDF uploaded: {file.name}")
-        elif file_type.startswith("text/"):
+        elif file_type and file_type.startswith("text/"):
             text = file.read().decode("utf-8")
             file_descriptions.append(f"📄 Text file ({file.name}) preview:\n{text[:1000]}...")
-        file.seek(0)  # Reset pointer
+        file.seek(0)  # Reset file pointer for potential future use
 
     if file_descriptions:
         prompt += "\n\nAttached file details:\n" + "\n".join(file_descriptions)
 
-    # --- TRY CALLING OPENAI COMPLETION ---
+    # --- TRY CALLING OPENAI CHAT COMPLETION ---
     try:
         stream = client.chat.completions.create(
             model=model_name,
@@ -104,4 +116,3 @@ if prompt := st.chat_input("Type your message..."):
         st.error(f"❌ API error: `{str(e)}`")
     except Exception as e:
         st.error(f"⚠️ Unexpected error: `{str(e)}`")
-
