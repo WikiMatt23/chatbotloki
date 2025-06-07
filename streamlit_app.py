@@ -3,37 +3,36 @@ from openai import OpenAI, OpenAIError
 import mimetypes
 import tiktoken
 import uuid
-import logging
-
-logging.basicConfig(level=logging.DEBUG)
 
 # --- MODEL PRICING PER 1K TOKENS ---
 MODEL_PRICING = {
     # GPT-4 family
-    "gpt-4o": {"input": 0.005, "output": 0.015},
-    "gpt-4o-mini": {"input": 0.005, "output": 0.015},
-    "gpt-4-turbo": {"input": 0.0015, "output": 0.003},
-    "gpt-4": {"input": 0.03, "output": 0.06},
+    "gpt-4o": {"input": 0.005, "output": 0.015},            # GPT-4o (GPT-4 Turbo) approx pricing
+    "gpt-4o-mini": {"input": 0.005, "output": 0.015},       # same as gpt-4o
+    "gpt-4-turbo": {"input": 0.0015, "output": 0.003},      # GPT-4 Turbo pricing
+    "gpt-4": {"input": 0.03, "output": 0.06},               # Standard GPT-4 pricing
 
     # GPT-3.5 family
-    "gpt-3.5-turbo": {"input": 0.0004, "output": 0.0004},
-    "gpt-3.5-turbo-16k": {"input": 0.0006, "output": 0.0006},
+    "gpt-3.5-turbo": {"input": 0.0004, "output": 0.0004},   # GPT-3.5 Turbo pricing
+    "gpt-3.5-turbo-16k": {"input": 0.0006, "output": 0.0006}, # GPT-3.5 Turbo 16k context
 
     # GPT-4 with extended context
-    "gpt-4-32k": {"input": 0.06, "output": 0.12},
-    "gpt-4-32k-turbo": {"input": 0.003, "output": 0.006},
+    "gpt-4-32k": {"input": 0.06, "output": 0.12},           # GPT-4 32k tokens
+    "gpt-4-32k-turbo": {"input": 0.003, "output": 0.006},   # GPT-4 Turbo 32k tokens
 
     # Other common models (if used)
-    "text-davinci-003": {"input": 0.02, "output": 0.02},
-    "text-curie-001": {"input": 0.002, "output": 0.002},
+    "text-davinci-003": {"input": 0.02, "output": 0.02},    # Davinci (old)
+    "text-curie-001": {"input": 0.002, "output": 0.002},    # Curie (old)
 }
 
+# --- COST LABELS FOR UI ---
 def cost_label(model_name):
     price = MODEL_PRICING.get(model_name)
     if price:
         return f"{model_name} (${price['input']*1000:.3f}/K in, ${price['output']*1000:.3f}/K out)"
     return f"{model_name} (price unknown)"
 
+# --- TOKEN COUNTING ---
 def count_tokens(text, model="gpt-3.5-turbo"):
     try:
         enc = tiktoken.encoding_for_model(model)
@@ -41,7 +40,7 @@ def count_tokens(text, model="gpt-3.5-turbo"):
         enc = tiktoken.get_encoding("cl100k_base")
     return len(enc.encode(text))
 
-# Initialize session state
+# --- SESSION INITIALIZATION ---
 if "chats" not in st.session_state:
     st.session_state.chats = {}
 if "current_chat_id" not in st.session_state:
@@ -52,36 +51,26 @@ if "current_chat_id" not in st.session_state:
 if "show_more_models" not in st.session_state:
     st.session_state.show_more_models = False
 
+# --- TITLE ---
 st.title("💬 Smart Multi-Model Chatbot")
 
+# --- API KEY INPUT ---
 openai_api_key = st.text_input("🔑 OpenAI API Key", type="password")
 if not openai_api_key:
     st.info("Please enter your OpenAI API key to continue.", icon="🗝️")
     st.stop()
 
-try:
-    client = OpenAI(api_key=openai_api_key)
-except Exception as e:
-    st.error(f"Failed to initialize OpenAI client: {e}")
-    st.stop()
+client = OpenAI(api_key=openai_api_key)
 
+# --- FETCH MODELS ---
 try:
     models_response = client.models.list()
     all_models = sorted([m.id for m in models_response.data if "gpt" in m.id])
 except OpenAIError as e:
     st.error(f"❌ Failed to fetch models: {e}")
     st.stop()
-except Exception as e:
-    st.error(f"Unexpected error fetching models: {e}")
-    st.stop()
 
-if not all_models:
-    st.error("No GPT models found for your API key.")
-    st.stop()
-
-# Show debug info for available models
-logging.debug(f"Available GPT models: {all_models}")
-
+# --- MODEL SELECTION WITH SHOW MORE BUTTON ---
 default_models = ["gpt-4o-mini", "gpt-3.5-turbo"]
 default_available = [m for m in default_models if m in all_models]
 other_models = [m for m in all_models if m not in default_available]
@@ -102,28 +91,34 @@ with col2:
 
 selected_model = selected_label.split(" ")[0]
 
+# --- CUSTOM MODEL INPUT ---
 custom_model_input = st.text_input("Or type a custom model name (overrides above)")
 model_name = custom_model_input.strip() if custom_model_input else selected_model
 
+# --- CHAT MANAGEMENT SIDEBAR ---
 with st.sidebar:
     st.header("💬 Chats")
-    chat_names = {chat_id: st.session_state.chats[chat_id]["name"] for chat_id in st.session_state.chats}
-    selected_chat_id = st.selectbox("Select a chat", chat_names.keys(), format_func=lambda x: chat_names[x])
+    chat_names = {chat_id: st.session_state.chats[chat_id]["name"]
+                  for chat_id in st.session_state.chats}
+    selected_chat_id = st.selectbox("Select a chat", chat_names.keys(),
+                                    format_func=lambda x: chat_names[x])
     if selected_chat_id != st.session_state.current_chat_id:
         st.session_state.current_chat_id = selected_chat_id
 
+    # Add new chat
     if st.button("➕ New Chat"):
         new_id = str(uuid.uuid4())
         st.session_state.chats[new_id] = {"messages": [], "cost": 0.0, "name": f"Chat {len(chat_names)+1}"}
         st.session_state.current_chat_id = new_id
 
+    # Rename chat
     new_name = st.text_input("Rename chat", st.session_state.chats[selected_chat_id]["name"])
-    if new_name and new_name != st.session_state.chats[selected_chat_id]["name"]:
+    if new_name:
         st.session_state.chats[selected_chat_id]["name"] = new_name
 
+    # Delete chat
     if st.button("🗑️ Delete Chat"):
-        if selected_chat_id in st.session_state.chats:
-            del st.session_state.chats[selected_chat_id]
+        del st.session_state.chats[selected_chat_id]
         if st.session_state.chats:
             st.session_state.current_chat_id = list(st.session_state.chats.keys())[0]
         else:
@@ -136,53 +131,42 @@ with st.sidebar:
     if chat:
         st.markdown(f"💰 **Estimated Cost**: `${chat['cost']:.4f}`")
 
-uploaded_files = st.file_uploader(
-    "📁 Upload files (images, PDFs, text)",
-    accept_multiple_files=True,
-    type=["png", "jpg", "jpeg", "txt", "pdf"]
-)
+# --- FILE UPLOAD ---
+uploaded_files = st.file_uploader("📁 Upload files (images, PDFs, text)",
+                                   accept_multiple_files=True,
+                                   type=["png", "jpg", "jpeg", "txt", "pdf"])
 
+# --- DISPLAY CHAT HISTORY ---
 chat = st.session_state.chats[st.session_state.current_chat_id]
-
 for msg in chat["messages"]:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
+# --- CHAT INPUT ---
 if prompt := st.chat_input("Type your message..."):
     chat["messages"].append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
+    # --- ATTACH FILE DETAILS ---
     file_descriptions = []
     for file in uploaded_files:
-        try:
-            file_type, _ = mimetypes.guess_type(file.name)
-            if file_type and file_type.startswith("image/"):
-                file_descriptions.append(f"📷 Image uploaded: {file.name}")
-            elif file_type == "application/pdf":
-                file_descriptions.append(f"📄 PDF uploaded: {file.name}")
-            elif file_type and file_type.startswith("text/"):
-                # Safe file read with try-except
-                try:
-                    text = file.read().decode("utf-8", errors="ignore")
-                    file_descriptions.append(f"📄 Text file ({file.name}):\n{text[:1000]}...")
-                except Exception as e:
-                    file_descriptions.append(f"📄 Text file ({file.name}): Unable to read content.")
-            else:
-                file_descriptions.append(f"📁 File uploaded: {file.name}")
-        except Exception as e:
-            file_descriptions.append(f"📁 File uploaded: {file.name} (error inspecting type)")
-        finally:
-            try:
-                file.seek(0)
-            except Exception:
-                pass
+        file_type, _ = mimetypes.guess_type(file.name)
+        if file_type and file_type.startswith("image/"):
+            file_descriptions.append(f"📷 Image uploaded: {file.name}")
+        elif file_type == "application/pdf":
+            file_descriptions.append(f"📄 PDF uploaded: {file.name}")
+        elif file_type and file_type.startswith("text/"):
+            text = file.read().decode("utf-8", errors="ignore")
+            file_descriptions.append(f"📄 Text file ({file.name}):\n{text[:1000]}...")
+        file.seek(0)
 
     if file_descriptions:
         prompt += "\n\nAttached files:\n" + "\n".join(file_descriptions)
         chat["messages"][-1]["content"] = prompt
 
     try:
+        # Token cost estimation
         model_cost = MODEL_PRICING.get(model_name, {"input": 0.0, "output": 0.0})
         input_tokens = sum(count_tokens(m["content"], model_name) for m in chat["messages"])
         input_cost = (input_tokens / 1000) * model_cost["input"]
@@ -198,9 +182,11 @@ if prompt := st.chat_input("Type your message..."):
         with st.chat_message("assistant"):
             for chunk in stream:
                 delta = ""
+                # Handle None safely for streaming content
                 try:
                     delta = chunk.choices[0].delta.get("content", "")
                 except Exception:
+                    # Fallback if .get() not supported
                     delta = getattr(chunk.choices[0].delta, "content", "") or ""
                 full_response += delta
                 message_placeholder.markdown(full_response)
@@ -211,7 +197,5 @@ if prompt := st.chat_input("Type your message..."):
         chat["messages"].append({"role": "assistant", "content": full_response})
         chat["cost"] += input_cost + output_cost
 
-    except OpenAIError as e:
-        st.error(f"OpenAI API error: {e}")
     except Exception as e:
-        st.error(f"Unexpected error: {e}")
+        st.error(f"⚠️ Error: {str(e)}")
