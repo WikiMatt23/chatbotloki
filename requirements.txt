@@ -1,2 +1,5 @@
 streamlit
+streamlit-authenticator
+PyYAML
+bcrypt
 openai
